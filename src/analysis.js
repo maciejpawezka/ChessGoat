@@ -1,6 +1,6 @@
 import { Chess } from 'chess.js';
 
-export const ANALYSIS_VERSION = 5;
+export const ANALYSIS_VERSION = 7;
 
 export const CLASSES = {
   brilliant: { label: 'Genialny', symbol: '!!', color: '#1baca6' },
@@ -111,30 +111,40 @@ function material(fen, color) {
 
 /**
  * How much material the sacrifice really gives up.
- * An immediate exchange that wins the material back (bishop takes, they capture it, we recapture)
- * is a trade. A piece that stays down — or that the best reply does not even take — still counts,
- * even when a longer combination later wins it back.
+ * A plain trade (we take, they recapture, we recapture on the same square) is not a sacrifice.
+ * Neither is a "sacrifice" that only liquidates into a dead draw (e.g. a knight for the last pawn).
+ * If the opponent takes and our follow-up wins something on a *different* square (removing a defender,
+ * a fork, a discovered attack), the piece was still sacrificed — the deficit right after their capture counts.
  */
 export function sacrificedMaterial(move, pvAfter, minLoss = 2) {
   const offer = sacrificeLoss(move, fenAfterOf(move), minLoss);
   if (!offer) return 0;
   const start = material(move.before, move.color);
   const chess = new Chess(move.after);
-  let captures = 0;
-  for (let i = 0; i < pvAfter.length && i < 2; i++) {
-    const uci = pvAfter[i];
-    let reply;
-    try { reply = chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] }); } catch { break; }
-    if (!reply.captured) break;
-    captures++;
-  }
-  if (!captures) {
+
+  const play = (uci) => {
+    try { return chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] }); } catch { return null; }
+  };
+  const reply = pvAfter[0] ? play(pvAfter[0]) : null;
+  if (!reply || !reply.captured) {
     // The best reply leaves the piece alone and our next move takes it back: it was never sacrificed.
     const retreat = pvAfter[1];
     if (retreat && retreat.slice(0, 2) === move.to) return 0;
     return offer;
   }
-  return start - material(chess.fen(), move.color);
+  if (chess.isInsufficientMaterial() || chess.isStalemate()) return 0;
+
+  const deficit = start - material(chess.fen(), move.color);
+  const follow = pvAfter[1];
+  if (follow && follow.slice(2, 4) === reply.to) {
+    // We recapture on the same square: judge the settled exchange.
+    const recapture = play(follow);
+    if (recapture?.captured) {
+      if (chess.isInsufficientMaterial()) return 0;
+      return start - material(chess.fen(), move.color);
+    }
+  }
+  return deficit;
 }
 
 function fenAfterOf(move) {
@@ -163,11 +173,9 @@ export function classifyMove({ move, prevMove, prevCls, winBefore, winAfter, isB
   const nearBest = isBest || loss <= 2;
   if (nearBest) {
     const down = sacrificedMaterial(move, pvAfter, band.sac);
-    // "Even if you hadn't found the move": the alternative must not already be crushing,
-    // and the sacrifice has to be clearly better than it. A sac that barely beats another good move is not brilliant.
+    // "Even if you hadn't found the move": the alternative must not already be crushing.
     const needed = secondWin === null || secondWin < band.crushing || matesAfter;
-    const critical = matesAfter || secondWin === null || winBefore - secondWin >= band.gap;
-    if (down >= band.sac && winAfter >= band.okAfter && needed && critical) return 'brilliant';
+    if (down >= band.sac && winAfter >= band.okAfter && needed) return 'brilliant';
     const recapture = move.captured && prevMove?.captured && prevMove.to === move.to;
     const onlyMove = isBest && secondWin !== null && winBefore - secondWin >= band.gap;
     const swings = isBest && (
