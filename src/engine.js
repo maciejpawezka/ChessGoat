@@ -24,7 +24,8 @@ function parseInfo(line) {
  * a search tagged e.g. 'live' can be cancelled when a newer one supersedes it.
  */
 export class Engine {
-  constructor() {
+  constructor({ hash = 32 } = {}) {
+    this.hash = hash;
     this.worker = new Worker(WORKER_URL);
     this.handlers = new Set();
     this.worker.onmessage = (e) => {
@@ -56,7 +57,7 @@ export class Engine {
     const ok = this.waitFor('uciok');
     this.send('uci');
     await ok;
-    this.send('setoption name Hash value 32');
+    this.send(`setoption name Hash value ${this.hash}`);
     await this.isReady();
   }
 
@@ -124,7 +125,7 @@ export class Engine {
 const engines = {};
 
 /** 'analysis' = background game review, 'live' = interactive eval/puzzles/coach, 'bot' = opponent. */
-export function getEngine(name) {
-  if (!engines[name]) engines[name] = new Engine();
+export function getEngine(name, opts) {
+  if (!engines[name]) engines[name] = new Engine(opts);
   return engines[name];
 }

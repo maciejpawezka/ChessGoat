@@ -1,6 +1,6 @@
 {
-  "name": "ChessPro",
-  "short_name": "ChessPro",
+  "name": "ChessGoat",
+  "short_name": "ChessGoat",
   "description": "Prywatna analiza partii z Chess.com, trenażer błędów i puzzle.",
   "start_url": "./",
   "scope": "./",

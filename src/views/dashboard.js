@@ -72,7 +72,7 @@ export function Dashboard() {
 
       ${queue.current && html`
         <div class="card banner">
-          <span>Analiza Stockfish ${Math.round(queue.progress * 100)}%${queue.pending ? ` · w kolejce ${queue.pending}` : ''}</span>
+          <span>Analiza ${Object.keys(queue.active || {}).length > 1 ? `${Object.keys(queue.active).length} partii naraz · ` : 'Stockfish '}${Math.round(queue.progress * 100)}%${queue.pending ? ` · w kolejce ${queue.pending}` : ''}</span>
           <div class="progress"><div style=${`width:${queue.progress * 100}%`}></div></div>
           ${queue.pending > 0 && html`<button class="btn ghost small" onClick=${clearQueue}>Zatrzymaj</button>`}
         </div>`}

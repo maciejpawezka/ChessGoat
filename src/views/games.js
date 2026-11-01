@@ -29,8 +29,9 @@ export function GameRow({ game, selected, onToggle }) {
   const opp = game.myColor === 'white' ? game.black : game.white;
   const open = () => { location.hash = `#/game/${encodeURIComponent(game.id)}`; };
   let acc;
+  const live = queue.active?.[game.id];
   if (game.analyzed) acc = html`<b>${game.myAccuracy?.toFixed(1)}%</b>`;
-  else if (queue.current === game.id) acc = html`<span class="muted small">${Math.round(queue.progress * 100)}%</span>`;
+  else if (live != null) acc = html`<span class="muted small">${Math.round(live * 100)}%</span>`;
   else if (queue.queued?.includes(game.id)) acc = html`<span class="muted small">w kolejce</span>`;
   else acc = html`<span class="muted small">—</span>`;
 
@@ -71,7 +72,8 @@ export function Games() {
     && (status === 'all' || (status === 'analyzed') === !!g.analyzed)
     && (!q || `${g.white.username} ${g.black.username} ${g.opening}`.toLowerCase().includes(q.toLowerCase())));
   const visible = filtered.slice(0, limit);
-  const pendingAll = filtered.filter((g) => !g.analyzed && g.id !== queue.current && !queue.queued?.includes(g.id));
+  const activeIds = new Set(Object.keys(queue.active || {}));
+  const pendingAll = filtered.filter((g) => !g.analyzed && !activeIds.has(g.id) && !queue.queued?.includes(g.id));
 
   const toggle = (id) => setSelected((s) => {
     const next = new Set(s);
@@ -88,8 +90,8 @@ export function Games() {
       <div class="page-head">
         <h1>Partie <span class="muted">${filtered.length}</span></h1>
         <div class="toolbar">
-          ${queue.current && html`
-            <span class="muted small">Analiza ${Math.round(queue.progress * 100)}%${queue.pending ? ` · w kolejce ${queue.pending}` : ''}</span>
+          ${activeIds.size > 0 && html`
+            <span class="muted small">Analiza ${activeIds.size > 1 ? `${activeIds.size} partii naraz · ` : ''}${Math.round(queue.progress * 100)}%${queue.pending ? ` · w kolejce ${queue.pending}` : ''}</span>
             ${queue.pending > 0 && html`<button class="btn" onClick=${clearQueue}>Zatrzymaj kolejkę</button>`}`}
           ${selected.size > 0
             ? html`<button class="btn ghost" onClick=${() => setSelected(new Set())}>Odznacz</button>

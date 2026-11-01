@@ -18,7 +18,7 @@ export function Settings() {
   const doExport = async () => {
     const data = await exportData();
     const url = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
-    const a = Object.assign(document.createElement('a'), { href: url, download: `chesspro-${new Date().toISOString().slice(0, 10)}.json` });
+    const a = Object.assign(document.createElement('a'), { href: url, download: `chessgoat-${new Date().toISOString().slice(0, 10)}.json` });
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -72,7 +72,7 @@ export function Settings() {
           </select></label>
         <label class="check"><input type="checkbox" checked=${settings.showBestMove} onChange=${(e) => saveSettings({ showBestMove: e.target.checked })} />
           Pokazuj strzałką najlepszy ruch w analizie partii</label>
-        <div class="muted small">Analiza działa lokalnie w przeglądarce (Stockfish 17.1 WASM) — nic nie jest wysyłane na żaden serwer.</div>
+        <div class="muted small">Analiza działa lokalnie w przeglądarce (Stockfish 17.1) — nic nie jest wysyłane na żaden serwer. Na komputerze kolejka liczy kilka partii naraz (maks. 4). Na telefonie zawsze jedną, żeby aparat się nie grzał. Głębokość 12 jest kilka razy szybsza niż 14.</div>
       </div>
 
       <div class="card form">

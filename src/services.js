@@ -8,13 +8,39 @@ import { settingsStore, syncStore, queueStore, bumpData } from './store.js';
 const AUTO_ANALYZE_LIMIT = 3;
 const AUTO_ANALYZE_WINDOW = 2 * 24 * 3600 * 1000;
 let pending = [];
-let running = false;
+// Phones stay on one engine: several Stockfish workers will heat the device and drain the battery.
+// Desktops use one worker per core, leaving one core for the page, and never more than four.
+const phone = matchMedia('(pointer: coarse)').matches && matchMedia('(hover: none)').matches;
+const WORKER_LIMIT = phone ? 1 : Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1));
+const active = new Map();
+let slotsRunning = 0;
+let nextEngine = 0;
+const freeEngines = [];
+let publishTimer = 0;
 
-export async function analyzeAndSave(game, onProgress) {
-  const depth = settingsStore.get().analysisDepth;
-  const { analysis, puzzles } = await analyzeGame(game, { engine: getEngine('analysis'), depth, onProgress });
-  await saveReview(game, analysis, puzzles);
-  bumpData();
+function takeEngine() {
+  return freeEngines.pop() || getEngine(`analysis-${nextEngine++}`, { hash: 16 });
+}
+
+function publishQueue(immediate = false) {
+  const send = () => {
+    publishTimer = 0;
+    const ids = [...active.keys()];
+    const progress = ids.length ? [...active.values()].reduce((a, b) => a + b, 0) / ids.length : 0;
+    queueStore.set({
+      current: ids[0] ?? null,
+      progress,
+      pending: pending.length,
+      queued: pending.map((p) => p.id),
+      active: Object.fromEntries(active),
+    });
+  };
+  if (immediate) {
+    clearTimeout(publishTimer);
+    send();
+    return;
+  }
+  if (!publishTimer) publishTimer = setTimeout(send, 200);
 }
 
 /** Re-classifies analyses made by an older version from their stored engine scores (no engine run). */
@@ -63,36 +89,62 @@ async function saveReview(game, analysis, puzzles) {
 }
 
 export function enqueueAnalysis(ids, { front = false, force = false } = {}) {
-  const items = ids.map((id) => ({ id, force }));
-  const rest = pending.filter((p) => !ids.includes(p.id));
+  const fresh = ids.filter((id) => !active.has(id));
+  if (!fresh.length) return;
+  const items = fresh.map((id) => ({ id, force }));
+  const rest = pending.filter((p) => !fresh.includes(p.id));
   pending = front ? [...items, ...rest] : [...rest, ...items];
-  queueStore.set({ pending: pending.length, queued: pending.map((p) => p.id) });
-  if (!running) runQueue();
+  publishQueue(true);
+  ensureSlots();
 }
 
-/** Drops games waiting in the queue; the one currently being analysed finishes. */
+/** Drops games waiting in the queue; the ones already being analysed finish. */
 export function clearQueue() {
   pending = [];
-  queueStore.set({ pending: 0, queued: [] });
+  publishQueue(true);
 }
 
-
-async function runQueue() {
-  running = true;
-  while (pending.length) {
-    const { id, force } = pending.shift();
-    queueStore.set({ pending: pending.length, queued: pending.map((p) => p.id), current: id, progress: 0 });
-    try {
-      const game = await db.get('games', id);
-      if (game && (!game.analyzed || force)) {
-        await analyzeAndSave(game, (p) => queueStore.set({ progress: p }));
-      }
-    } catch (e) {
-      console.error('Analiza nie powiodła się', id, e);
-    }
+function ensureSlots() {
+  while (slotsRunning < WORKER_LIMIT && pending.length) {
+    slotsRunning++;
+    slot();
   }
-  queueStore.set({ current: null, progress: 0, pending: 0, queued: [] });
-  running = false;
+}
+
+async function slot() {
+  const engine = takeEngine();
+  try {
+    while (pending.length) {
+      const { id, force } = pending.shift();
+      active.set(id, 0);
+      publishQueue(true);
+      try {
+        const game = await db.get('games', id);
+        if (game && (!game.analyzed || force)) {
+          const depth = settingsStore.get().analysisDepth;
+          const { analysis, puzzles } = await analyzeGame(game, {
+            engine,
+            depth,
+            onProgress: (p) => {
+              active.set(id, p);
+              publishQueue();
+            },
+          });
+          await saveReview(game, analysis, puzzles);
+          bumpData();
+        }
+      } catch (e) {
+        console.error('Analiza nie powiodła się', id, e);
+      } finally {
+        active.delete(id);
+        publishQueue(true);
+      }
+    }
+  } finally {
+    freeEngines.push(engine);
+    slotsRunning--;
+    if (pending.length) ensureSlots();
+  }
 }
 
 export async function runSync({ full = false } = {}) {
@@ -133,13 +185,13 @@ export async function initSync() {
 }
 
 export async function exportData() {
-  const data = { app: 'chesspro', exportedAt: Date.now(), settings: settingsStore.get() };
+  const data = { app: 'chessgoat', exportedAt: Date.now(), settings: settingsStore.get() };
   for (const store of ['games', 'analyses', 'puzzles', 'puzzleLog', 'kv']) data[store] = await db.all(store);
   return data;
 }
 
 export async function importData(data) {
-  if (data.app !== 'chesspro') throw new Error('To nie jest plik eksportu ChessPro.');
+  if (data.app !== 'chessgoat' && data.app !== 'chesspro') throw new Error('To nie jest plik eksportu ChessGoat.');
   for (const store of ['games', 'analyses', 'puzzles', 'puzzleLog', 'kv']) {
     if (Array.isArray(data[store])) await db.putMany(store, data[store]);
   }

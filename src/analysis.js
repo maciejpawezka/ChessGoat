@@ -1,6 +1,6 @@
 import { Chess } from 'chess.js';
 
-export const ANALYSIS_VERSION = 4;
+export const ANALYSIS_VERSION = 5;
 
 export const CLASSES = {
   brilliant: { label: 'Genialny', symbol: '!!', color: '#1baca6' },
@@ -76,19 +76,27 @@ export function gameAccuracy(whiteWins, moves) {
   return result;
 }
 
-/** A piece left en prise (or traded down) where the opponent can legally win material. */
-export function isSacrifice(move, fenAfter) {
-  if (move.piece === 'p' || move.piece === 'k') return false;
+/**
+ * Material the opponent can win by taking the moved piece, or 0 when it is not a piece sacrifice.
+ * `minLoss` is lower for newer players: Chess.com is more generous about what counts as a sacrifice.
+ */
+export function sacrificeLoss(move, fenAfter, minLoss = 2) {
+  if (move.piece === 'p' || move.piece === 'k') return 0;
   const chess = new Chess(fenAfter);
   const value = PIECE_VALUE[move.promotion || move.piece];
   const captured = move.captured ? PIECE_VALUE[move.captured] : 0;
-  if (captured >= value) return false;
+  if (captured >= value) return 0;
   const takers = chess.moves({ verbose: true }).filter((m) => m.to === move.to && m.captured);
-  if (!takers.length) return false;
+  if (!takers.length) return 0;
   const defended = chess.attackers(move.to, move.color).length > 0;
-  if (!defended) return value - captured >= 2;
-  const cheapest = Math.min(...takers.map((m) => (m.piece === 'k' ? 99 : PIECE_VALUE[m.piece])));
-  return value - captured - cheapest >= 2;
+  const loss = defended
+    ? value - captured - Math.min(...takers.map((m) => (m.piece === 'k' ? 99 : PIECE_VALUE[m.piece])))
+    : value - captured;
+  return loss >= minLoss ? loss : 0;
+}
+
+export function isSacrifice(move, fenAfter) {
+  return sacrificeLoss(move, fenAfter) > 0;
 }
 
 function material(fen, color) {
@@ -102,39 +110,77 @@ function material(fen, color) {
 }
 
 /**
- * Material the mover is still down after the engine's best continuation settles, so desperado moves
- * (giving up a piece that was lost anyway) and sacrifices regained within two moves don't count.
+ * How much material the sacrifice really gives up.
+ * An immediate exchange that wins the material back (bishop takes, they capture it, we recapture)
+ * is a trade. A piece that stays down — or that the best reply does not even take — still counts,
+ * even when a longer combination later wins it back.
  */
-export function sacrificedMaterial(move, pvAfter) {
+export function sacrificedMaterial(move, pvAfter, minLoss = 2) {
+  const offer = sacrificeLoss(move, fenAfterOf(move), minLoss);
+  if (!offer) return 0;
   const start = material(move.before, move.color);
   const chess = new Chess(move.after);
-  let lastCapture = false;
-  for (let i = 0; i < pvAfter.length && (i < 4 || (lastCapture && i < 6)); i++) {
+  let captures = 0;
+  for (let i = 0; i < pvAfter.length && i < 2; i++) {
     const uci = pvAfter[i];
-    let m;
-    try { m = chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] }); } catch { break; }
-    lastCapture = !!m.captured;
+    let reply;
+    try { reply = chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] }); } catch { break; }
+    if (!reply.captured) break;
+    captures++;
+  }
+  if (!captures) {
+    // The best reply leaves the piece alone and our next move takes it back: it was never sacrificed.
+    const retreat = pvAfter[1];
+    if (retreat && retreat.slice(0, 2) === move.to) return 0;
+    return offer;
   }
   return start - material(chess.fen(), move.color);
 }
 
-export function classifyMove({ move, prevMove, prevCls, winBefore, winAfter, isBest, legalCount, secondWin, fenAfter, pvAfter = [], matesAfter = false }) {
+function fenAfterOf(move) {
+  return move.after;
+}
+
+/** Expected-points bands. Cutoffs follow Chess.com Classification V2; lower ratings are more generous. */
+function bands(rating) {
+  const beginner = !rating || rating < 1400;
+  return {
+    sac: beginner ? 1 : 2,
+    okAfter: beginner ? 45 : 50,
+    crushing: beginner ? 95 : 85,
+    losing: beginner ? 40 : 35,
+    winning: beginner ? 62 : 75,
+    gap: beginner ? 15 : 20,
+  };
+}
+
+export function classifyMove({ move, prevMove, prevCls, winBefore, winAfter, isBest, legalCount, secondWin, fenAfter, pvAfter = [], matesAfter = false, rating = null }) {
+  // `winBefore`/`winAfter` are expected points on a 0-100 scale (Chess.com's 0.00-1.00 times 100).
+  // https://support.chess.com/en/articles/8572705-how-are-moves-classified-what-is-a-blunder-or-brilliant-etc
   const loss = Math.max(0, winBefore - winAfter);
+  const band = bands(rating);
   if (legalCount === 1) return 'forced';
-  if (isBest || loss < 2) {
-    if (winAfter >= 50 && isSacrifice(move, fenAfter) && sacrificedMaterial(move, pvAfter) >= 2) {
-      // In an already won position a sacrifice only counts if it forces mate or clearly beats the alternatives.
-      const crushing = winBefore >= 97;
-      if (!crushing || (isBest && (matesAfter || secondWin === null || secondWin < 90))) return 'brilliant';
-    }
+  const nearBest = isBest || loss <= 2;
+  if (nearBest) {
+    const down = sacrificedMaterial(move, pvAfter, band.sac);
+    // "Even if you hadn't found the move": the alternative must not already be crushing,
+    // and the sacrifice has to be clearly better than it. A sac that barely beats another good move is not brilliant.
+    const needed = secondWin === null || secondWin < band.crushing || matesAfter;
+    const critical = matesAfter || secondWin === null || winBefore - secondWin >= band.gap;
+    if (down >= band.sac && winAfter >= band.okAfter && needed && critical) return 'brilliant';
     const recapture = move.captured && prevMove?.captured && prevMove.to === move.to;
-    if (isBest && secondWin !== null && winBefore >= 40 && winBefore - secondWin >= 20 && !recapture) return 'great';
+    const onlyMove = isBest && secondWin !== null && winBefore - secondWin >= band.gap;
+    const swings = isBest && (
+      (winBefore < band.losing && winAfter >= 50 && winAfter - winBefore >= 8)
+      || (winBefore >= 50 && winBefore < band.winning && winAfter >= band.winning && winAfter - winBefore >= 6)
+    );
+    if (!recapture && (onlyMove || swings)) return 'great';
     return isBest ? 'best' : 'excellent';
   }
-  if (loss < 5) return 'good';
-  if (loss < 10) return 'inaccuracy';
-  const cls = loss < 20 ? 'mistake' : 'blunder';
-  if (BAD.has(prevCls) && winBefore >= 60 && winAfter >= 40) return 'miss';
+  if (loss <= 5) return 'good';
+  if (loss <= 10) return 'inaccuracy';
+  const cls = loss <= 20 ? 'mistake' : 'blunder';
+  if ((prevCls === 'mistake' || prevCls === 'blunder') && winBefore >= band.winning && winAfter < band.winning && loss >= 10) return 'miss';
   return cls;
 }
 
@@ -212,11 +258,11 @@ export async function analyzeGame(game, { engine, depth = 14, onProgress }) {
 /** Turns per-position engine scores into classified moves, accuracy and puzzles (no engine needed). */
 export function buildReview(game, positions, { depth, createdAt }) {
   const { moves, fens } = parseGame(game.pgn);
-  const ratings = [game.white?.rating, game.black?.rating].filter(Boolean);
-  const scale = ratingScale(ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null);
   const analyzedMoves = [];
   moves.forEach((m, i) => {
     const before = positions[i];
+    const moverRating = game[m.color === 'w' ? 'white' : 'black']?.rating || null;
+    const scale = ratingScale(moverRating);
     const winBefore = before.win;
     const winAfter = 100 - positions[i + 1].win;
     const isBest = m.lan === before.best;
@@ -232,6 +278,7 @@ export function buildReview(game, positions, { depth, createdAt }) {
       fenAfter: fens[i + 1],
       pvAfter: positions[i + 1].pv || [],
       matesAfter: positions[i + 1].mate !== null && positions[i + 1].mate <= 0,
+      rating: moverRating,
     });
     analyzedMoves.push({
       san: m.san,

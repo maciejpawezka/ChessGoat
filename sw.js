@@ -1,4 +1,4 @@
-const CACHE = 'chesspro-v2';
+const CACHE = 'chesspro-v3';
 
 self.addEventListener('install', () => self.skipWaiting());
 

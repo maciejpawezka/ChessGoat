@@ -37,7 +37,7 @@ export function Review({ id, query }) {
   const settings = useStore(settingsStore);
 
   useEffect(() => {
-    if (game && !analysis && queue.current !== id) enqueueAnalysis([id], { front: true });
+    if (game && !analysis && queue.active?.[id] == null) enqueueAnalysis([id], { front: true });
   }, [game?.id, !!analysis]);
 
   const total = parsed ? parsed.moves.length : 0;
@@ -98,7 +98,8 @@ export function Review({ id, query }) {
   };
 
   const analyzing = !analysis;
-  const inQueue = queue.current === id;
+  const pct = queue.active?.[id];
+  const inQueue = pct != null;
 
   return html`
     <div class="layout">
@@ -132,8 +133,8 @@ export function Review({ id, query }) {
 
         ${analyzing && html`
           <div class="card">
-            <div>${inQueue ? `Analiza Stockfish… ${Math.round(queue.progress * 100)}%` : 'Partia w kolejce do analizy…'}</div>
-            <div class="progress"><div style=${`width:${inQueue ? queue.progress * 100 : 0}%`}></div></div>
+            <div>${inQueue ? `Analiza Stockfish… ${Math.round(pct * 100)}%` : 'Partia w kolejce do analizy…'}</div>
+            <div class="progress"><div style=${`width:${inQueue ? pct * 100 : 0}%`}></div></div>
             <div class="muted small">Możesz już przeglądać ruchy i analizować warianty na szachownicy.</div>
           </div>`}
 

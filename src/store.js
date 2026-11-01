@@ -58,4 +58,4 @@ export const bumpData = () => dataStore.set((s) => ({ version: s.version + 1 }))
 
 export const syncStore = createStore({ syncing: false, message: '', error: '', lastSync: null });
 
-export const queueStore = createStore({ current: null, progress: 0, pending: 0, queued: [] });
+export const queueStore = createStore({ current: null, progress: 0, pending: 0, queued: [], active: {} });

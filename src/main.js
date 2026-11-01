@@ -46,7 +46,7 @@ function Nav({ section }) {
         ${NAV.map(([key, label]) => html`<a class=${section === key ? 'active' : ''} href=${`#/${key}`}>${label}</a>`)}
       </div>
       ${(sync.syncing || queue.current) && html`
-        <div class="nav-status" title=${sync.syncing ? sync.message : `Analiza ${Math.round(queue.progress * 100)}%${queue.pending ? `, w kolejce ${queue.pending}` : ''}`}>
+        <div class="nav-status" title=${sync.syncing ? sync.message : `Analiza ${Object.keys(queue.active || {}).length > 1 ? `${Object.keys(queue.active).length} partii naraz, ` : ''}${Math.round(queue.progress * 100)}%${queue.pending ? `, w kolejce ${queue.pending}` : ''}`}>
           <span class="spinner"></span>
         </div>`}
     </nav>`;
@@ -63,7 +63,7 @@ function Onboarding() {
   return html`
     <div class="onboarding">
       <form class="card form" onSubmit=${submit}>
-        <h1 class="row"><${GoatKnight} size=${30} /> ChessPro</h1>
+        <h1 class="row"><${GoatKnight} size=${30} /> ChessGoat</h1>
         <p>Podaj swój nick z Chess.com. Zapamiętam go — przy kolejnych wizytach partie będą pobierane automatycznie.</p>
         <input autofocus placeholder="nick na Chess.com" value=${name} onInput=${(e) => setName(e.target.value)} />
         <button class="btn primary" type="submit">Start</button>

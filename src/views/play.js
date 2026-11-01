@@ -171,7 +171,7 @@ export function Play({ query }) {
     const bot = `Stockfish ${botRating}`;
     const result = status.over ? status.result : 'unfinished';
     const pgnResult = { unfinished: '*', draw: '1/2-1/2' }[result] || ((result === 'win') === (game.color === 'white') ? '1-0' : '0-1');
-    chess.header('Event', 'ChessPro vs bot', 'White', game.color === 'white' ? me : bot, 'Black', game.color === 'black' ? me : bot, 'Result', pgnResult);
+    chess.header('Event', 'ChessGoat vs bot', 'White', game.color === 'white' ? me : bot, 'Black', game.color === 'black' ? me : bot, 'Result', pgnResult);
     const id = `bot-${Date.now()}`;
     const side = (name) => ({ username: name, rating: name === me ? '?' : botRating, result: '' });
     await db.put('games', {
