@@ -1,6 +1,6 @@
 import { Chess } from 'chess.js';
 
-export const ANALYSIS_VERSION = 7;
+export const ANALYSIS_VERSION = 9;
 
 export const CLASSES = {
   brilliant: { label: 'Genialny', symbol: '!!', color: '#1baca6' },
@@ -121,13 +121,16 @@ export function sacrificedMaterial(move, pvAfter, minLoss = 2) {
   if (!offer) return 0;
   const start = material(move.before, move.color);
   const chess = new Chess(move.after);
+  // The move itself ended the game as a draw (e.g. knight takes the last pawn, K+N vs K): nothing was given up.
+  if (chess.isInsufficientMaterial() || chess.isStalemate()) return 0;
 
   const play = (uci) => {
     try { return chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] }); } catch { return null; }
   };
   const reply = pvAfter[0] ? play(pvAfter[0]) : null;
-  if (!reply || !reply.captured) {
-    // The best reply leaves the piece alone and our next move takes it back: it was never sacrificed.
+  if (!reply || !reply.captured || reply.to !== move.to) {
+    // The best reply does not take the piece (it plays a check, grabs something else, ...): it stays en prise,
+    // unless our next move simply pulls it back, in which case it was never sacrificed.
     const retreat = pvAfter[1];
     if (retreat && retreat.slice(0, 2) === move.to) return 0;
     return offer;
