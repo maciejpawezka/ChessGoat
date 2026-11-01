@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#000000">
+  <meta name="robots" content="noindex, nofollow">
+  <title>ChessPro</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="vendor/chessground/chessground.base.css">
+  <link rel="stylesheet" href="vendor/chessground/chessground.cburnett.css">
+  <link rel="stylesheet" href="src/styles.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "preact-htm": "./vendor/preact-htm.js",
+        "chess.js": "./vendor/chess.js",
+        "chessground": "./vendor/chessground/chessground.min.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
