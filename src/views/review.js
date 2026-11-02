@@ -156,7 +156,7 @@ export function Review({ id, query }) {
           </div>` : moveInfo && html`
           <div class="card move-comment">
             <div class="comment-title"><${ClassIcon} cls=${moveInfo.cls} size=${22} />
-              <span><b>${moveNumber(index)} ${moveInfo.san}</b> ${VERDICT[moveInfo.cls]}</span></div>
+              <span><b>${moveNumber(index)} ${moveInfo.san}</b> ${VERDICT[moveInfo.cls]}${moveInfo.cls === 'brilliant' && moveInfo.brilliancyScore ? ` (Widowiskowość: ${moveInfo.brilliancyScore} pkt)` : ''}</span></div>
             ${prevPos?.best && prevPos.best !== moveInfo.uci && html`<div>Najlepsze było: <b>${moveInfo.bestSan}</b></div>`}
           </div>`}
 
