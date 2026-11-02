@@ -1,6 +1,6 @@
 import { Chess } from 'chess.js';
 
-export const ANALYSIS_VERSION = 9;
+export const ANALYSIS_VERSION = 10;
 
 export const CLASSES = {
   brilliant: { label: 'Genialny', symbol: '!!', color: '#1baca6' },
@@ -130,9 +130,12 @@ export function sacrificedMaterial(move, pvAfter, minLoss = 2) {
   const reply = pvAfter[0] ? play(pvAfter[0]) : null;
   if (!reply || !reply.captured || reply.to !== move.to) {
     // The best reply does not take the piece (it plays a check, grabs something else, ...): it stays en prise,
-    // unless our next move simply pulls it back, in which case it was never sacrificed.
+    // unless our next move simply pulls it back (a quiet move, not a capture), in which case it was never sacrificed.
     const retreat = pvAfter[1];
-    if (retreat && retreat.slice(0, 2) === move.to) return 0;
+    if (retreat && retreat.slice(0, 2) === move.to) {
+      const next = reply ? play(retreat) : null;
+      if (!next || !next.captured) return 0;
+    }
     return offer;
   }
   if (chess.isInsufficientMaterial() || chess.isStalemate()) return 0;
