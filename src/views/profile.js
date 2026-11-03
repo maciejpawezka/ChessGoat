@@ -21,7 +21,6 @@ export async function loadProfile(games) {
       if (m.color === mine && m.cls === 'brilliant') brilliants.push({ game, ply: i + 1, move: m, fen: analysis.fens[i + 1] });
     });
   }
-  brilliants.sort((a, b) => (b.move.brilliancyScore || 0) - (a.move.brilliancyScore || 0));
   return { puzzleRating, log, brilliants };
 }
 
@@ -121,10 +120,7 @@ function BrilliantCard({ item }) {
     <a class="brilliant-card" href=${`#/game/${encodeURIComponent(game.id)}?ply=${ply}`}>
       <${MiniBoard} fen=${fen} orientation=${game.myColor} highlight=${[move.from, move.to]} badge=${{ square: move.to, cls: 'brilliant' }} />
       <div class="brilliant-meta">
-        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 6px;">
-          <b>${no}${ply % 2 === 1 ? '.' : '...'} ${move.san}</b>
-          ${move.brilliancyScore ? html`<span style="font-size: 0.76em; padding: 1px 6px; border-radius: 6px; background: rgba(27, 172, 166, 0.18); color: #1baca6; font-weight: 700; white-space: nowrap;">★ ${move.brilliancyScore}</span>` : ''}
-        </div>
+        <b>${no}${ply % 2 === 1 ? '.' : '...'} ${move.san}</b>
         <span class="muted small">vs ${opp.username} (${opp.rating}) · ${fmtDate(game.endTime)}</span>
       </div>
     </a>`;
